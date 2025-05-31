@@ -163,15 +163,20 @@ class ActorCriticAgent(AbstractAgent):
             Discounted returns.
         """
         # TODO: convert rewards into discounted returns
+        returns = self.compute_returns(rewards)
 
         # TODO: convert states list into a torch batch and compute state-values
+        states_tensor = torch.stack([torch.from_numpy(s).float() for s in states])
+        values = self.value_fn(states_tensor)
 
         # TODO: compute raw advantages = returns - values
+        adv = returns - values.squeeze()
 
         # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
+        adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
 
         # return normalized advantages and returns
-        return None
+        return adv, returns
 
     def compute_gae(
         self,
@@ -200,21 +205,45 @@ class ActorCriticAgent(AbstractAgent):
             GAE advantages for each timestep.
         returns : torch.Tensor
             Target returns for training the critic.
+
+        !Used Github Completions to complete the code!
         """
 
         # TODO: compute values and next_values using your value_fn
+        vals_states = self.value_fn(
+            torch.stack([torch.from_numpy(s).float() for s in states])
+        ).squeeze()
+
+        vals_next_states = self.value_fn(
+            torch.stack([torch.from_numpy(s).float() for s in next_states])
+        ).squeeze()
 
         # TODO: compute deltas: one-step TD errors
+        delta_t = (
+            torch.tensor(rewards, dtype=torch.float32)
+            + self.gamma
+            * vals_next_states
+            * (1 - torch.tensor(dones, dtype=torch.float32))
+            - vals_states
+        )
 
         # TODO: accumulate GAE advantages backwards
+        adv = 0.0
+        advs = []
+        for delta in reversed(delta_t.tolist()):
+            adv = delta + self.gamma * self.gae_lambda * adv
+            advs.insert(0, adv)
+        advs = torch.tensor(advs, dtype=torch.float32)
 
         # TODO: compute returns using advantages and values
+        returns = advs + vals_states
 
         # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
+        advs = (advs - advs.mean()) / (advs.std(unbiased=False) + 1e-8)
 
         # TODO: advantages, returns  # replace with actual values (detach both to avoid re-entering the graph)
 
-        return None
+        return advs.detach(), returns.detach()
 
     def update_agent(
         self,
@@ -234,6 +263,8 @@ class ActorCriticAgent(AbstractAgent):
             Scalar loss for the policy network.
         value_loss : float
             Scalar loss for the value network (0.0 if no critic is used).
+
+        !Used Github Completions to complete the code!
         """
 
         states, actions, rewards, next_states, dones, log_probs = zip(*trajectory)
@@ -250,13 +281,19 @@ class ActorCriticAgent(AbstractAgent):
             ret = self.compute_returns(list(rewards))
 
             # TODO: compute advantages by subtracting running return
-            adv = ...
+            adv = ret - self.running_return
 
             # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
             # (Reminder, use unbiased=False for torch tensors)
+            adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
 
             # TODO: update running return using baseline decay
             # (x = baseline_decay * x + (1 - baseline_decay) * mean return)
+            self.running_return = (
+                self.baseline_decay * self.running_return
+                + (1 - self.baseline_decay) * ret.mean().item()
+            )
+
         else:
             ret = self.compute_returns(list(rewards))
             adv = (ret - ret.mean()) / (ret.std(unbiased=False) + 1e-8)
@@ -273,7 +310,7 @@ class ActorCriticAgent(AbstractAgent):
         if self.baseline_type in ("value", "gae"):
             vals = self.value_fn(
                 torch.stack([torch.from_numpy(s).float() for s in states])
-            )
+            ).squeeze()
             value_loss = F.mse_loss(vals, ret)
             self.value_optimizer.zero_grad()
             if value_loss.requires_grad:
