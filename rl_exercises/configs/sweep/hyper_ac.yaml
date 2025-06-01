@@ -1,0 +1,22 @@
+defaults:
+  - override hydra/sweeper: hypersweeper  # Wechselt von BasicSweeper zu HyperSweeper
+
+hydra:
+  sweeper:
+    # === 1) Wahl des HPO-Optimierers (z.B. SMAC) ===
+    backend: smac            # oder: hebo, pbt, carps
+    smac:
+      budget: 5             # Anzahl Gesamt-Evaluierungen (Iterations)
+      maximize: true         # Return maximieren
+    # === 2) Parameter-Definitionen ===
+    params:
+      env.name:
+        - CartPole-v1
+        - LunarLander-v3
+      agent.baseline_type:
+        - none
+        - avg,
+        - value,
+        - gae
+      seed:
+        range(0, 5)
