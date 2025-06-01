@@ -1,18 +1,65 @@
+defaults:
+    - _self_ # Load this config file itself
+    - override hydra/sweeper: HyperSMAC # Replace Hydra’s default sweeper with Hypersweeper’s RandomSearch
+
+hydra:
+    run:
+        dir: ./tmp/actor_critic # Directory for single‐run outputs
+    sweep:
+        dir: ./tmp/actor_critic # Directory where sweep results are stored
+    sweeper:
+        n_trials: 1000 # Number of sampled configs (trials)
+        sweeper_kwargs:
+            max_parallelization: 1.0 # Fraction of trials to run in parallel (0.0–1.0)
+        search_space:
+            seed: 42
+            hyperparameters:
+                agent.lr_actor:
+                    type: uniform_float
+                    lower: 0.00001
+                    upper: 1
+                    log: true
+
+                agent.lr_critic:
+                    type: uniform_float
+                    lower: 0.00001
+                    upper: 1
+                    log: true
+
+                agent.hidden_size:
+                    type: uniform_int
+                    lower: 1
+                    upper: 2048
+
+                agent.gamma:
+                    type: uniform_float
+                    lower: 0.00001
+                    upper: 1.0
+
+                agent.gae_lambda:
+                    type: uniform_float
+                    lower: 0.00001
+                    upper: 1.0
+
+                agent.baseline_decay:
+                    type: uniform_float
+                    lower: 0.00001
+                    upper: 1.0
 env:
-  name: LunarLander-v3
+    name: LunarLander-v3
 
 seed: 0
 
 agent:
-  lr_actor: 5e-3
-  lr_critic: 1e-2
-  gamma: 0.99
-  gae_lambda: 0.95        # Generalized Advantage Estimation
-  hidden_size: 128
-  baseline_type: value      # options: 'none','avg','value','gae'
-  baseline_decay: 0.9     # only used for 'avg'
+    lr_actor: 5e-3
+    lr_critic: 1e-2
+    gamma: 0.99
+    gae_lambda: 0.95 # Generalized Advantage Estimation
+    hidden_size: 128
+    baseline_type: value # options: 'none','avg','value','gae'
+    baseline_decay: 0.9 # only used for 'avg'
 
 train:
-  total_steps: 200000
-  eval_interval: 10000
-  eval_episodes: 5
+    total_steps: 200000
+    eval_interval: 10000
+    eval_episodes: 5
