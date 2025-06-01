@@ -404,7 +404,7 @@ class ActorCriticAgent(AbstractAgent):
                     evaluations.append(mean_r)
 
             policy_loss, value_loss = self.update_agent(trajectory)
-            total_return = sum(r for _, _, r, *_ in trajectory)
+            # total_return = sum(r for _, _, r, *_ in trajectory)
             # print(
             #    f"[Train] Step {step_count:6d} Return {total_return:5.1f} Policy Loss {policy_loss:.3f} Value Loss {value_loss:.3f}"
             # )
