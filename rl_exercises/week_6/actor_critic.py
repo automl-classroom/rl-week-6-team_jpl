@@ -364,7 +364,7 @@ class ActorCriticAgent(AbstractAgent):
         total_steps: int,
         eval_interval: int = 10000,
         eval_episodes: int = 5,
-    ) -> None:
+    ) -> List[float]:
         """
         Train the agent for a given number of steps.
 
@@ -379,6 +379,7 @@ class ActorCriticAgent(AbstractAgent):
         """
         eval_env = gym.make(self.env.spec.id)
         step_count = 0
+        evaluations = []
 
         while step_count < total_steps:
             state, _ = self.env.reset()
@@ -400,14 +401,16 @@ class ActorCriticAgent(AbstractAgent):
                     print(
                         f"[Eval ] Step {step_count:6d} AvgReturn {mean_r:5.1f} ± {std_r:4.1f}"
                     )
+                    evaluations.append(mean_r)
 
             policy_loss, value_loss = self.update_agent(trajectory)
             total_return = sum(r for _, _, r, *_ in trajectory)
-            print(
-                f"[Train] Step {step_count:6d} Return {total_return:5.1f} Policy Loss {policy_loss:.3f} Value Loss {value_loss:.3f}"
-            )
+            # print(
+            #    f"[Train] Step {step_count:6d} Return {total_return:5.1f} Policy Loss {policy_loss:.3f} Value Loss {value_loss:.3f}"
+            # )
 
         print("Training complete.")
+        return evaluations  # return evaluation history for further analysis
 
 
 @hydra.main(

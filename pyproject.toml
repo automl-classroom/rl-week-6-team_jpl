@@ -30,6 +30,7 @@ dependencies = [
         "hydra-colorlog",
         "stable-baselines3",
         "moviepy",
+        "hypersweeper",
 ]
 
 [project.optional-dependencies]

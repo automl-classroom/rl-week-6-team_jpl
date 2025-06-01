@@ -9,7 +9,7 @@ agent:
   gamma: 0.99
   gae_lambda: 0.95        # Generalized Advantage Estimation
   hidden_size: 128
-  baseline_type: value      # options: 'none','avg','value','gae'
+  baseline_type: gae      # options: 'none','avg','value','gae'
   baseline_decay: 0.9     # only used for 'avg'
 
 train:
