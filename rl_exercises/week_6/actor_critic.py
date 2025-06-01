@@ -70,6 +70,7 @@ class ActorCriticAgent(AbstractAgent):
         baseline_decay: float = 0.9,
     ) -> None:
         set_seed(env, seed)
+        self.seed = seed
         self.env = env
         self.gamma = gamma
         self.gae_lambda = gae_lambda
@@ -90,6 +91,8 @@ class ActorCriticAgent(AbstractAgent):
         # it is updated during training
         if baseline_type == "avg":
             self.running_return = 0.0
+
+        self.eval_steps, self.mean_returns = [], []
 
     def predict_action(
         self, state: np.ndarray, evaluate: bool = False
@@ -163,15 +166,27 @@ class ActorCriticAgent(AbstractAgent):
             Discounted returns.
         """
         # TODO: convert rewards into discounted returns
+        returns = self.compute_returns(rewards)  # dtype: tensor
 
         # TODO: convert states list into a torch batch and compute state-values
+        states = torch.from_numpy(np.stack(states)).float()  # Stack to obtain batches
+
+        state_values = self.value_fn(
+            states
+        )  # Compute state values by running them through value network
 
         # TODO: compute raw advantages = returns - values
 
+        raw_advantages = returns - state_values
+
         # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
 
+        advantages = (raw_advantages - raw_advantages.mean()) / (
+            raw_advantages.std(unbiased=False) + 1e-8
+        )
+
         # return normalized advantages and returns
-        return None
+        return advantages, returns
 
     def compute_gae(
         self,
@@ -201,20 +216,55 @@ class ActorCriticAgent(AbstractAgent):
         returns : torch.Tensor
             Target returns for training the critic.
         """
-
+        # Used ChatGPT to fix some errors
         # TODO: compute values and next_values using your value_fn
 
+        values = self.value_fn(torch.as_tensor(states).float()).squeeze(
+            -1
+        )  # squeeze to remove last dimension if its 1
+
+        next_values = self.value_fn(torch.as_tensor(next_states).float()).squeeze(-1)
+
         # TODO: compute deltas: one-step TD errors
+        # delta = r_t + gamma * V(s_t+1) - V(s_t)
+        deltas = (
+            torch.as_tensor(rewards)
+            + self.gamma
+            * (1 - torch.as_tensor(dones, dtype=torch.float32))
+            * next_values
+            - values
+        )
 
         # TODO: accumulate GAE advantages backwards
+        advantages = torch.empty_like(deltas)
+        # Compute advantage for each step in reverse order
+        # According to formula: Agae_t = delta_t + gamma * gae_lambda * Agae_(t+1), with Agae_(t+1) initialized as 0
+        gae = 0.0
+        for t in reversed(range(len(deltas))):
+            gae = (
+                deltas[t]
+                + self.gamma
+                * self.gae_lambda
+                * (1.0 - torch.as_tensor(dones, dtype=torch.float32)[t])
+                * gae
+            )
+            advantages[t] = gae
+
+        advantages = advantages.detach()
 
         # TODO: compute returns using advantages and values
+        # G_t = A_t + V(s_t)
+        returns = (advantages + values).detach()
 
         # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
+        # Normalization: X_norm = (X - mean(x))/(std(X) + 1e-8)
+        advantages = (advantages - advantages.mean()) / (
+            advantages.std(unbiased=False) + 1e-8
+        )
 
         # TODO: advantages, returns  # replace with actual values (detach both to avoid re-entering the graph)
 
-        return None
+        return advantages, returns
 
     def update_agent(
         self,
@@ -250,13 +300,18 @@ class ActorCriticAgent(AbstractAgent):
             ret = self.compute_returns(list(rewards))
 
             # TODO: compute advantages by subtracting running return
-            adv = ...
+            adv = ret - self.running_return
 
             # TODO: normalize advantages to zero mean and unit variance and use 1e-8 for numerical stability
             # (Reminder, use unbiased=False for torch tensors)
+            adv = adv - torch.mean(adv) / torch.std(adv, unbiased=False) + 1e-8
 
             # TODO: update running return using baseline decay
             # (x = baseline_decay * x + (1 - baseline_decay) * mean return)
+            self.running_return = self.baseline_decay * self.running_return + (
+                1.0 - self.baseline_decay
+            ) * torch.mean(ret)
+
         else:
             ret = self.compute_returns(list(rewards))
             adv = (ret - ret.mean()) / (ret.std(unbiased=False) + 1e-8)
@@ -327,7 +382,7 @@ class ActorCriticAgent(AbstractAgent):
         total_steps: int,
         eval_interval: int = 10000,
         eval_episodes: int = 5,
-    ) -> None:
+    ) -> float:
         """
         Train the agent for a given number of steps.
 
@@ -364,6 +419,11 @@ class ActorCriticAgent(AbstractAgent):
                         f"[Eval ] Step {step_count:6d} AvgReturn {mean_r:5.1f} ± {std_r:4.1f}"
                     )
 
+                    # results[step_count] = {'mean_return': mean_r, 'std_return': std_r}
+
+                    self.eval_steps.append(step_count)
+                    self.mean_returns.append(mean_r)
+
             policy_loss, value_loss = self.update_agent(trajectory)
             total_return = sum(r for _, _, r, *_ in trajectory)
             print(
@@ -372,11 +432,19 @@ class ActorCriticAgent(AbstractAgent):
 
         print("Training complete.")
 
+        np.savez(
+            rf"C:\Users\LuanL\PycharmProjects\rl-week-6-team_jpl\rl_exercises\week_6\logs\{self.env.spec.id}_{self.baseline_type}_{self.seed}.npz",
+            steps=np.array(self.eval_steps),
+            returns=np.array(self.mean_returns),
+        )
+
+        return sum(self.mean_returns) / len(self.mean_returns)
+
 
 @hydra.main(
     config_path="../configs/agent/", config_name="actor-critic", version_base="1.1"
 )
-def main(cfg: DictConfig) -> None:
+def main(cfg: DictConfig) -> float:
     env = gym.make(cfg.env.name)
     set_seed(env, cfg.seed)
     agent = ActorCriticAgent(
@@ -390,11 +458,14 @@ def main(cfg: DictConfig) -> None:
         baseline_type=cfg.agent.baseline_type,
         baseline_decay=cfg.agent.get("baseline_decay", 0.9),
     )
-    agent.train(
+    avg_return = agent.train(
         cfg.train.total_steps,
         cfg.train.eval_interval,
         cfg.train.eval_episodes,
     )
+
+    print(avg_return)
+    return avg_return
 
 
 if __name__ == "__main__":
