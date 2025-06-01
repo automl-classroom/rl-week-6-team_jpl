@@ -1,0 +1,90 @@
+#Adopted from https://github.com/automl/hypersweeper/blob/main/examples/configs/mlp_smac.yaml
+
+defaults:
+  - _self_
+  - override hydra/sweeper: HyperSMAC
+
+# Environment configuration
+env:
+  name: LunarLander-v3  
+
+
+seed: 42
+
+hydra:
+  sweeper:
+    n_trials: 50  
+    budget_variable: train.total_steps               
+    sweeper_kwargs:
+      optimizer_kwargs:
+        scenario:
+          n_trials: ${hydra.sweeper.n_trials}
+          seed: ${seed}
+          min_budget: 10000
+          max_budget: 50000
+          deterministic: true
+          n_workers: 6
+          output_directory: ./tmp/actor_critic_sweep
+        smac_facade: 
+          _target_: smac.facade.multi_fidelity_facade.MultiFidelityFacade
+          _partial_: true
+        intensifier: 
+          _target_: smac.facade.multi_fidelity_facade.MultiFidelityFacade.get_intensifier
+          _partial_: true
+          eta: 5
+    search_space: ${search_space}  
+  run: 
+    dir: ./tmp/actor_critic_sweep
+  
+  sweep: 
+    dir: ./tmp/actor_critic_sweep
+    
+
+# ActorCritic Agent configuration
+agent:
+  _target_: rl_exercises.week_6.ActorCriticAgent
+  lr_actor: 0.001
+  lr_critic: 0.01
+  gamma: 0.99
+  gae_lambda: 0.95
+  hidden_size: 128
+  baseline_type: gae
+  baseline_decay: 0.9
+  seed: 42
+
+# Training configuration
+train:
+  total_steps: 50000
+  eval_interval: 10000
+  eval_episodes: 3
+
+# Search space for hyperparameter optimization
+search_space:
+  seed: 42
+  hyperparameters:
+    agent.lr_actor:
+      type: uniform_float
+      lower: 1e-6
+      upper: 1e-3
+      log: true
+    agent.lr_critic:
+      type: uniform_float
+      lower: 1e-6
+      upper: 1e-3
+      log: true
+    agent.gamma:
+      type: uniform_float
+      lower: 0.9
+      upper: 0.999
+    agent.gae_lambda:
+      type: uniform_float
+      lower: 0.8
+      upper: 0.99
+    agent.hidden_size:
+      type: uniform_int
+      lower: 64
+      upper: 256
+
+  
+    
+
